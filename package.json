@@ -1,0 +1,48 @@
+{
+  "name": "janus-gateway",
+  "version": "1.0.0",
+  "description": "High-performance Virtual Model Gateway aggregating Google Antigravity & OpenAI Codex subscription compute into unified Anthropic and OpenAI protocols with zero-downtime cluster hot-reload.",
+  "main": "src/index.ts",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yuyan98A/janus-gateway.git"
+  },
+  "homepage": "https://github.com/yuyan98A/janus-gateway#readme",
+  "bugs": {
+    "url": "https://github.com/yuyan98A/janus-gateway/issues"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/index.ts",
+    "start:cluster": "node --experimental-strip-types src/cluster.ts",
+    "reload": "node --experimental-strip-types src/cluster.ts reload",
+    "dev": "node --watch --experimental-strip-types src/index.ts",
+    "test": "node --experimental-strip-types tests/test-service-scripts.ts && node --experimental-strip-types tests/test-tool-healer.ts && node --experimental-strip-types tests/test-google-acc-enhancements.ts && node --experimental-strip-types tests/test-schema-sanitizer.ts && node --experimental-strip-types tests/test-scrubber.ts && node --experimental-strip-types tests/test-event-source-parser.ts && node --experimental-strip-types tests/test-protocol-ir.ts && node --experimental-strip-types tests/test-zero-downtime.ts && node --experimental-strip-types tests/test-account-pool.ts && node --experimental-strip-types tests/test-gateway.ts",
+    "test:reasoning": "node --experimental-strip-types tests/test-codex-reasoning.ts && node --experimental-strip-types tests/test-google-reasoning.ts",
+    "service:start": "powershell -ExecutionPolicy Bypass -File scripts/service-start.ps1",
+    "service:stop": "powershell -ExecutionPolicy Bypass -File scripts/service-stop.ps1",
+    "service:status": "powershell -ExecutionPolicy Bypass -File scripts/service-status.ps1",
+    "service:restart": "powershell -ExecutionPolicy Bypass -File scripts/service-stop.ps1; powershell -ExecutionPolicy Bypass -File scripts/service-start.ps1",
+    "service:install": "powershell -ExecutionPolicy Bypass -File scripts/install-autostart.ps1",
+    "service:uninstall": "powershell -ExecutionPolicy Bypass -File scripts/uninstall-autostart.ps1",
+    "account:list": "node --experimental-strip-types src/providers/google/account-pool/cli.ts list",
+    "account:add": "node --experimental-strip-types src/providers/google/account-pool/cli.ts add",
+    "account:login": "node --experimental-strip-types src/providers/google/account-pool/cli.ts login",
+    "account:remove": "node --experimental-strip-types src/providers/google/account-pool/cli.ts remove",
+    "account:quota": "node --experimental-strip-types src/providers/google/account-pool/cli.ts quota"
+  },
+  "keywords": [
+    "janus-gateway",
+    "virtual-model-gateway",
+    "antigravity",
+    "claude-code",
+    "codex",
+    "anthropic",
+    "openai",
+    "zero-downtime",
+    "reverse-proxy",
+    "agent"
+  ],
+  "author": "yuyan98A",
+  "license": "MIT"
+}

@@ -1,0 +1,115 @@
+{
+  "server": {
+    "port": 18763,
+    "apiKey": "sk-gateway-local-token",
+    "host": "127.0.0.1"
+  },
+  "providers": {
+    "google": {
+      "enabled": true,
+      "accountsPath": "./data/google-accounts.json",
+      "reasoning": {
+        "models": {
+          "gemini-2.5-flash": {
+            "effortMode": "budget",
+            "effortMap": {
+              "low": { "thinkingBudget": 2048 },
+              "medium": { "thinkingBudget": 8192 },
+              "high": { "thinkingBudget": 16384 }
+            },
+            "budget": {
+              "min": 2048,
+              "max": 16384,
+              "canDisable": false,
+              "canDynamic": false,
+              "requiresBudgetBelowOutputLimit": true
+            },
+            "defaultMaxOutputTokens": 17408
+          },
+          "gemini-3.8-flash-tiered": {
+            "effortMode": "level",
+            "effortMap": {
+              "low": { "thinkingLevel": "LOW" },
+              "medium": { "thinkingLevel": "MEDIUM" },
+              "high": { "thinkingLevel": "HIGH" }
+            },
+            "defaultMaxOutputTokens": 4096
+          },
+          "claude-sonnet-4-6": {
+            "effortMode": "budget",
+            "effortMap": {
+              "low": { "thinkingBudget": 2048 },
+              "medium": { "thinkingBudget": 8192 },
+              "high": { "thinkingBudget": 16384 }
+            },
+            "budget": {
+              "min": 2048,
+              "max": 16384,
+              "canDisable": false,
+              "canDynamic": false,
+              "requiresBudgetBelowOutputLimit": true
+            },
+            "defaultMaxOutputTokens": 17408
+          }
+        }
+      }
+    },
+    "codex": {
+      "enabled": true,
+      "authPath": "~/.codex/auth.json",
+      "baseURL": "https://chatgpt.com/backend-api/codex",
+      "modelsCachePath": "~/.codex/models_cache.json",
+      "reasoning": {
+        "models": {
+          "gpt-6.1-sol": {
+            "efforts": ["none", "minimal", "low", "medium", "high", "xhigh"]
+          },
+          "gpt-6-astra": {
+            "efforts": ["none", "minimal", "low", "medium", "high", "xhigh"]
+          },
+          "gpt-6-sol": {
+            "efforts": ["none", "low", "medium", "high", "xhigh"]
+          },
+          "gpt-6-luna": {
+            "efforts": ["none", "minimal", "low", "medium", "high", "xhigh"]
+          },
+          "gpt-reserve": {
+            "efforts": ["none", "low", "medium", "high", "xhigh"]
+          },
+          "gpt-5.6-sol": {
+            "efforts": ["none", "low", "medium", "high", "xhigh"]
+          },
+          "gpt-5.6-terra": {
+            "efforts": ["none", "minimal", "low", "medium", "high", "xhigh"]
+          },
+          "gpt-5.6-luna": {
+            "efforts": ["none", "low", "medium", "high", "xhigh"]
+          },
+          "gpt-5.5": {
+            "efforts": ["none", "low", "medium", "high", "xhigh"]
+          },
+          "codex-auto-review": {
+            "efforts": ["none", "minimal", "low", "medium", "high", "xhigh"]
+          }
+        },
+        "anthropicBudget": {
+          "lowMaxTokens": 2000,
+          "mediumMaxTokens": 8000
+        }
+      }
+    }
+  },
+  "routes": {
+    "claude-sonnet-4-6": "google",
+    "claude-opus-4-6-thinking": "google",
+    "claude-3-7-sonnet": "google",
+    "gemini-3.8-flash": "google",
+    "gemini-3.8-flash-high": "google",
+    "gemini-3.8-flash-medium": "google",
+    "gemini-2.5-pro": "google",
+    "gpt-6.1-sol": "codex",
+    "gpt-6-astra": "codex",
+    "gpt-6-sol": "codex",
+    "gpt-5.5": "codex"
+  }
+}

@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build output
+dist/
+build/
+out/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment and sensitive keys
+.env
+.env.*
+!.env.example
+accounts.json
+*credentials*.json
+data/
+google-accounts*.json
+test_results.json
+_temp/
+
+# OS & Test Artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+.playwright-mcp/
+.agents/
+.claude/
+
+# IDE & Editor caches
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
