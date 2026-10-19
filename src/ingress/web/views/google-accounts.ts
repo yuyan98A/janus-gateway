@@ -42,7 +42,7 @@ export function renderGoogleAccountsView(): string {
                   <th scope="col">账号 / 标签</th>
                   <th scope="col">健康状态</th>
                   <th scope="col">绑定项目 ID</th>
-                  <th scope="col" style="min-width: 280px;">全模型专线配额 (All Models Quotas)</th>
+                  <th scope="col" style="min-width: 280px;">算力池额度窗口</th>
                   <th scope="col" style="text-align: right;">操作</th>
                 </tr>
               </thead>
@@ -110,34 +110,23 @@ export function renderAddAccountModal(): string {
 
 export function renderAllQuotasModal(): string {
   return `
-  <dialog id="all-quotas-modal" aria-labelledby="all-quotas-modal-title" style="max-width: 780px; width: 92%;">
+  <dialog id="all-quotas-modal" aria-labelledby="all-quotas-modal-title" style="max-width: 680px; width: 92%;">
     <div class="modal-box" style="max-width: 100%;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-hairline); padding-bottom: 12px;">
         <h3 id="all-quotas-modal-title" style="font-size: 16px; display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-pure);">
           ${icon('activity', 18)}
-          <span>Google 账号全模型配额明细</span>
+          <span>Google Antigravity 账号算力池额度</span>
         </h3>
         <button class="btn btn-secondary btn-sm" type="button" onclick="closeAllQuotasModal()" aria-label="关闭弹窗">关闭</button>
       </div>
 
       <div id="all-quotas-modal-meta" style="font-size: 12px; color: var(--text-sub); margin-bottom: 14px; background: var(--bg-chassis); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-hairline);"></div>
 
-      <div class="table-wrap" style="max-height: 420px; overflow-y: auto;">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">模型名称</th>
-              <th scope="col">模型 ID</th>
-              <th scope="col" style="min-width: 140px;">剩余配额水线</th>
-              <th scope="col">剩余比例</th>
-              <th scope="col">下次重置时间</th>
-            </tr>
-          </thead>
-          <tbody id="all-quotas-tbody">
-            <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">暂无配额数据</td></tr>
-          </tbody>
-        </table>
-      </div>
+      <!-- Per-account subscription pool windows -->
+      <div id="all-quotas-modal-windows" style="margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px;"></div>
+
+      <!-- 官方配额共享说明小条 -->
+      <div id="all-quotas-modal-desc" style="display: none; border-left: 2px solid var(--border-subtle); padding: 8px 12px; font-size: 11px; color: var(--text-muted); line-height: 1.5; background: rgba(255,255,255,0.01); border-radius: 0 4px 4px 0;"></div>
     </div>
   </dialog>
   `;

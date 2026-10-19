@@ -25,6 +25,7 @@ import {
 import { EventSourceParser } from '../../utils/event-source-parser.ts';
 import { parseOpenAIChatRequest } from '../../protocol/ingress.ts';
 import { logTrace } from '../../utils/logger.ts';
+import { GOOGLE_QUOTA_ENDPOINTS, googleQuotaHeaders, parseGoogleQuotaGroups, parseGoogleQuotaPayload } from './quota.ts';
 
 const GOOGLE_ENDPOINTS = [
   'https://daily-cloudcode-pa.googleapis.com',
@@ -54,12 +55,29 @@ interface GoogleDiscoveredModel {
   };
 }
 
-export interface GoogleModelQuotaItem {
-  model: string;
-  displayName?: string;
-  remainingFraction: number;
-  remainingPercent: number;
+export type AntigravitySubscriptionPlan = 'free' | 'pro' | 'ultra' | 'ultra-lite' | 'unknown';
+
+export interface AntigravitySubscription {
+  plan: AntigravitySubscriptionPlan;
+  tierId: string | null;
+  tierName: string | null;
+  description?: string;
+}
+
+export interface GoogleQuotaBucket {
+  bucketId: string;
+  displayName: string;
+  window: string;
+  remainingFraction: number | null;
+  remainingPercent: number | null;
   resetTime?: string;
+  available: boolean | null;
+}
+
+export interface GoogleQuotaGroup {
+  displayName: string;
+  description?: string;
+  buckets: GoogleQuotaBucket[];
 }
 
 export interface GoogleAccountQuota {
@@ -70,23 +88,18 @@ export interface GoogleAccountQuota {
   status: 'ok' | 'error';
   error?: string;
   checkedAt: string;
-  models: Record<string, GoogleModelQuotaItem>;
+  subscription?: AntigravitySubscription;
+  serverTimeOffsetMs?: number;
+  source?: 'retrieveUserQuotaSummary';
+  endpoint?: string;
+  description?: string;
+  groups?: GoogleQuotaGroup[];
 }
 
 export interface GoogleQuotaReport {
   object: 'google_quota_report';
   checkedAt: string;
   accounts: GoogleAccountQuota[];
-  summary: {
-    totalAccounts: number;
-    activeAccounts: number;
-    primaryModelQuota?: {
-      model: string;
-      remainingPercent: number;
-      resetTime?: string;
-      sourceAccount: string;
-    };
-  };
 }
 
 interface GoogleModelDiscoveryResponse {
@@ -543,6 +556,65 @@ export class GoogleProviderClient {
     return [...discovered.values()].sort((a, b) => a.id.localeCompare(b.id));
   }
 
+  /** CPA queries subscription metadata on daily with the same Hub identity as quotas. */
+  private async fetchSubscriptionPlan(accessToken: string): Promise<AntigravitySubscription | undefined> {
+    const res = await fetch(`${GOOGLE_QUOTA_ENDPOINTS[0]}/v1internal:loadCodeAssist`, {
+      method: 'POST',
+      headers: googleQuotaHeaders(accessToken),
+      body: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!res.ok) return undefined;
+    const data = parseGoogleQuotaPayload(await res.json());
+    const paidTier = data?.paidTier ?? data?.paid_tier;
+    const tier = paidTier?.id ? paidTier : data?.currentTier ?? data?.current_tier;
+    if (!tier?.id && !tier?.name) return undefined;
+    const plans: Record<string, AntigravitySubscriptionPlan> = {
+      'g1-ultra-tier': 'ultra', 'g1-ultra-lite-tier': 'ultra-lite', 'g1-pro-tier': 'pro',
+      'free-tier': 'free', 'standard-tier': 'free'
+    };
+    return { plan: plans[tier.id] || 'unknown', tierId: tier.id || null, tierName: tier.name || null,
+      ...(typeof tier.description === 'string' ? { description: tier.description } : {}) };
+  }
+
+  /** First non-empty valid pool response wins; never merge pools from different hosts. */
+  private async fetchQuotaSummary(accessToken: string, projectId: string): Promise<{
+    groups: GoogleQuotaGroup[];
+    description?: string;
+    endpoint: string;
+    serverTimeOffsetMs?: number;
+  }> {
+    if (!projectId?.trim()) throw new Error('Google quota query requires a project ID');
+    let lastError = 'No valid quota groups';
+    let lastSuccessfulEndpoint: string | undefined;
+    for (const endpoint of GOOGLE_QUOTA_ENDPOINTS) {
+      try {
+        const res = await fetch(`${endpoint}/v1internal:retrieveUserQuotaSummary`, {
+          method: 'POST',
+          headers: googleQuotaHeaders(accessToken),
+          body: JSON.stringify({ project: projectId }),
+          signal: AbortSignal.timeout(15000)
+        });
+        if (!res.ok) { lastError = `HTTP ${res.status}`; continue; }
+        lastSuccessfulEndpoint = endpoint;
+        const data = parseGoogleQuotaPayload(await res.json());
+        const groups = parseGoogleQuotaGroups(data);
+        if (!groups.length) { lastError = '上游未提供有效算力池窗口'; continue; }
+        const serverTime = Date.parse(res.headers.get('date') || '');
+        return {
+          groups, endpoint,
+          ...(typeof data?.description === 'string' ? { description: data.description } : {}),
+          ...(Number.isFinite(serverTime) ? { serverTimeOffsetMs: serverTime - Date.now() } : {})
+        };
+      } catch (error) {
+        lastError = sanitizeProbeDetail(error instanceof Error ? error.message : String(error));
+      }
+    }
+    // CPA treats successful-but-empty responses as unknown data, not as full quota.
+    if (lastSuccessfulEndpoint) return { groups: [], endpoint: lastSuccessfulEndpoint };
+    throw new Error(`Google quota query failed across all endpoints: ${lastError}`);
+  }
+
   public async fetchQuota(targetAccountId?: string): Promise<GoogleQuotaReport> {
     const allAccounts = this.pool.listAccounts();
     const candidateAccounts = targetAccountId
@@ -555,46 +627,25 @@ export class GoogleProviderClient {
     for (const account of candidateAccounts) {
       try {
         const { accessToken, projectId } = await this.pool.getAccessToken(account);
-        const response = await fetch(`${GOOGLE_ENDPOINTS[0]}/v1internal:fetchAvailableModels`, {
-          method: 'POST',
-          headers: {
-            ...ANTIGRAVITY_HEADERS,
-            Authorization: `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({ project: projectId })
-        });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-
-        const result = await response.json() as GoogleModelDiscoveryResponse;
-        const modelsMap: Record<string, GoogleModelQuotaItem> = {};
-
-        for (const [id, model] of Object.entries(result.models || {})) {
-          const rawFraction = model.quotaInfo?.remainingFraction;
-          const parsedFraction = rawFraction === undefined || rawFraction === null ? Number.NaN : Number(rawFraction);
-          const remainingFraction = Number.isFinite(parsedFraction) ? Math.max(0, Math.min(1, parsedFraction)) : 1.0;
-          const remainingPercent = Math.round(remainingFraction * 1000) / 10;
-
-          modelsMap[id] = {
-            model: id,
-            displayName: model.displayName,
-            remainingFraction,
-            remainingPercent,
-            resetTime: model.quotaInfo?.resetTime
-          };
-        }
+        const [subscription, quotaResult] = await Promise.all([
+          this.fetchSubscriptionPlan(accessToken).catch(() => undefined),
+          this.fetchQuotaSummary(accessToken, projectId)
+        ]);
 
         accountQuotas.push({
           id: account.id,
           email: account.email,
           label: account.label,
-          projectId: account.projectId,
+          projectId,
           status: 'ok',
-          checkedAt: nowIso,
-          models: modelsMap
+          checkedAt: new Date().toISOString(),
+          subscription,
+          serverTimeOffsetMs: quotaResult.serverTimeOffsetMs,
+          source: 'retrieveUserQuotaSummary',
+          endpoint: quotaResult.endpoint,
+          description: quotaResult.description,
+          groups: quotaResult.groups
         });
       } catch (err: any) {
         accountQuotas.push({
@@ -603,42 +654,16 @@ export class GoogleProviderClient {
           label: account.label,
           projectId: account.projectId,
           status: 'error',
-          error: err.message || String(err),
-          checkedAt: nowIso,
-          models: {}
+          error: sanitizeProbeDetail(err.message || String(err)),
+          checkedAt: new Date().toISOString()
         });
       }
-    }
-
-    let primaryModelQuota: GoogleQuotaReport['summary']['primaryModelQuota'] = undefined;
-    const priorityModels = ['claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gemini-3.8-flash', 'gemini-2.5-pro'];
-
-    for (const targetModel of priorityModels) {
-      for (const acc of accountQuotas) {
-        if (acc.status === 'ok' && acc.models[targetModel]) {
-          const m = acc.models[targetModel];
-          if (!primaryModelQuota || m.remainingPercent > primaryModelQuota.remainingPercent) {
-            primaryModelQuota = {
-              model: targetModel,
-              remainingPercent: m.remainingPercent,
-              resetTime: m.resetTime,
-              sourceAccount: acc.email || acc.id
-            };
-          }
-        }
-      }
-      if (primaryModelQuota) break;
     }
 
     return {
       object: 'google_quota_report',
       checkedAt: nowIso,
-      accounts: accountQuotas,
-      summary: {
-        totalAccounts: allAccounts.length,
-        activeAccounts: accountQuotas.filter(a => a.status === 'ok').length,
-        ...(primaryModelQuota ? { primaryModelQuota } : {})
-      }
+      accounts: accountQuotas
     };
   }
 }

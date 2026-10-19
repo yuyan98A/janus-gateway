@@ -94,6 +94,12 @@ const server = http.createServer((req, res) => withRequestLog(req, res, async ()
   const pathname = url.pathname;
 
   // 1. Health & reachability probe endpoints (no auth required)
+  if (pathname === '/favicon.ico') {
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*' });
+    res.end();
+    return;
+  }
+
   const isProbePath =
     pathname === '/health' ||
     pathname === '/api/hello' ||

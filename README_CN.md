@@ -120,7 +120,7 @@
   ```bash
   npm run account:quota
   ```
-  直接输出账号池内各账号的主力模型（`claude-sonnet-4-6`、`gemini-3.8-flash` 等）实时剩余百分比及精准重置倒计时。
+  按账号输出 Gemini、Claude/GPT 算力池的 5 小时与周额度汇总窗口、剩余百分比及重置倒计时；各账号独立展示。
 
 ### 6. 原生 Windows 后台静默服务套件 (Zero-Dependency Daemon)
 * 纯原生 PowerShell 5.1 与 VBScript 静默宿主驱动，完全无需配置第三方进程守护程序（如 NSSM/PM2）；
@@ -235,7 +235,9 @@ npm run service:uninstall
 ```bash
 npm run account:quota
 ```
-控制台将清晰打印出所有账号当前的实时配额百分比、重置时间和主力模型可用状态。
+控制台按账号打印算力池的 5 小时与周额度剩余百分比、重置时间和可用状态。
+
+查询对齐 CLIProxyAPI：使用 Hub 请求头，按 daily → sandbox → production 顺序读取汇总窗口；各账号独立展示，不合并跨端点数据，缺失额度不补成 100%。详见[配额查询机制与验证](docs/knowledge/Google_Antigravity配额机制与多端点订阅层设计.md)。
 
 ---
 

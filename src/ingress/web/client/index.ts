@@ -1,6 +1,7 @@
 import type { DashboardPage } from '../types.ts';
 import { coreScript } from './core.ts';
 import { gatewayScript } from './gateway.ts';
+import { googleQuotaScript } from './google-quota.ts';
 import { usageScript } from './usage.ts';
 import { requestsScript } from './requests.ts';
 import { accountsScript } from './accounts.ts';
@@ -22,6 +23,8 @@ export function getClientScript(options: ClientScriptOptions): string {
   const DASHBOARD_PAGE = ${JSON.stringify(page)};
 
   ${coreScript}
+
+  ${googleQuotaScript}
 
   ${gatewayScript}
 

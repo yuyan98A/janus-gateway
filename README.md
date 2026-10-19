@@ -223,7 +223,7 @@ npm run service:uninstall
 ```bash
 npm run account:quota
 ```
-Outputs live remaining quota percentages and reset countdowns across your account pool for `claude-sonnet-4-6` and Gemini models.
+Outputs live 5-hour and weekly compute-pool quotas and reset countdowns separately for each Google account. Queries follow CLIProxyAPI's Hub headers and daily → sandbox → production fallback order; results are never merged across accounts or endpoints, and missing quotas are never assumed to be 100%. See the [quota mechanism and verification notes](docs/knowledge/Google_Antigravity配额机制与多端点订阅层设计.md).
 
 ---
 

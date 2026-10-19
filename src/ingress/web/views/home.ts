@@ -69,22 +69,14 @@ export function renderHomeView(): string {
               <div id="home-google-accounts-detail" style="font-size: 12px; color: var(--text-sub);">正在读取账号健康与轮换策略…</div>
             </div>
 
-            <!-- Google Upstream Quotas Section (All Models) -->
+            <!-- Google subscription pool windows are shown separately for each account. -->
             <div style="background: var(--bg-chassis); border: 1px solid var(--border-hairline); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">专线上游全模型配额 (All Models Quota)</span>
+                <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">各账号算力池额度窗口</span>
                 <span id="home-google-quota-summary-tag" class="tabular-nums" style="font-size: 11px; color: var(--google-text);">自动同步中…</span>
               </div>
               <div id="home-google-quota-list" style="display: flex; flex-direction: column; gap: 8px;">
-                <div style="font-size: 12px; color: var(--text-sub); text-align: center; padding: 12px;">正在探测 Google 上游全模型配额…</div>
-              </div>
-              <div id="home-google-more-wrapper" style="display: none; margin-top: 8px; border-top: 1px dashed var(--border-hairline); padding-top: 8px;">
-                <div id="home-google-more-list" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 6px;"></div>
-                <div style="text-align: center;">
-                  <button type="button" class="btn btn-secondary btn-sm" style="font-size: 10px; padding: 2px 10px;" onclick="toggleHomeGoogleMore()" id="btn-home-google-more">
-                    展开其余全部模型配额 ▼
-                  </button>
-                </div>
+                <div style="font-size: 12px; color: var(--text-sub); text-align: center; padding: 12px;">正在获取各账号算力池窗口…</div>
               </div>
             </div>
           </div>

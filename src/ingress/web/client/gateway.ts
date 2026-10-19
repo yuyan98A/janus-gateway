@@ -62,24 +62,12 @@ export const gatewayScript = `
   }
 
   // --- Home Dashboard: Google Antigravity Lifeline & All Quotas ---
-  let homeGoogleMoreOpen = false;
-  function toggleHomeGoogleMore() {
-    const list = document.getElementById('home-google-more-list');
-    const btn = document.getElementById('btn-home-google-more');
-    if (!list || !btn) return;
-    homeGoogleMoreOpen = !homeGoogleMoreOpen;
-    list.style.display = homeGoogleMoreOpen ? 'flex' : 'none';
-    btn.textContent = homeGoogleMoreOpen ? '收起其余模型配额 ▲' : '展开其余全部模型配额 ▼';
-  }
-
   async function loadHomeGoogleLifeline() {
     if (DASHBOARD_PAGE !== 'home') return;
     const countEl = document.getElementById('home-google-accounts-count');
     const detailEl = document.getElementById('home-google-accounts-detail');
     const summaryTag = document.getElementById('home-google-quota-summary-tag');
     const quotaList = document.getElementById('home-google-quota-list');
-    const moreWrapper = document.getElementById('home-google-more-wrapper');
-    const moreList = document.getElementById('home-google-more-list');
 
     try {
       // 1. Google Accounts Pool State
@@ -103,126 +91,33 @@ export const gatewayScript = `
         }
       }
 
-      // 2. Query All Google Models Quotas
+      // Fetch subscription pool windows independently for each account.
       const quotaRes = await fetch('/v1/admin/google/quota', {
-        headers: { 'Authorization': 'Bearer ' + API_KEY }
+        headers: { 'Authorization': 'Bearer ' + API_KEY },
+        cache: 'no-store'
       });
-      if (quotaRes.ok) {
-        const quotaData = await quotaRes.json();
-        const accounts = quotaData.accounts || [];
-
-        // Aggregate best quota per model across all eligible accounts
-        const modelMap = Object.create(null);
-        for (const acc of accounts) {
-          if (acc.status !== 'ok' || !acc.models) continue;
-          for (const [mid, m] of Object.entries(acc.models)) {
-            const item = m as any;
-            if (!modelMap[mid] || item.remainingPercent > modelMap[mid].remainingPercent) {
-              modelMap[mid] = { ...item, sourceAccount: acc.email || acc.id };
-            }
-          }
-        }
-
-        const modelList = Object.values(modelMap);
-        if (summaryTag) {
-          const pm = quotaData.summary?.primaryModelQuota;
-          if (pm) {
-            summaryTag.textContent = pm.model + ': ' + pm.remainingPercent.toFixed(1) + '%';
-          } else {
-            summaryTag.textContent = '共 ' + modelList.length + ' 个可用模型';
-          }
-        }
-
-        if (modelList.length === 0) {
-          if (quotaList) {
-            quotaList.innerHTML = '<div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 12px;">上游未返回模型配额条目（可检查账号是否有效开通）</div>';
-          }
-          if (moreWrapper) moreWrapper.style.display = 'none';
-          return;
-        }
-
-        // Sort: Flagship models first, then alphabetical
-        const priority = [
-          'claude-sonnet-4-6',
-          'claude-opus-4-6-thinking',
-          'gemini-3.8-flash-tiered',
-          'gemini-2.5-pro',
-          'gemini-2.5-flash',
-          'gpt-oss-120b-medium'
-        ];
-        modelList.sort((a: any, b: any) => {
-          const pa = priority.indexOf(a.model);
-          const pb = priority.indexOf(b.model);
-          if (pa !== -1 && pb !== -1) return pa - pb;
-          if (pa !== -1) return -1;
-          if (pb !== -1) return 1;
-          return a.model.localeCompare(b.model);
-        });
-
-        const renderItem = (m: any) => {
-          const pct = Math.round(m.remainingPercent * 10) / 10;
-          let barBg = 'linear-gradient(90deg, #059669, #34d399)';
-          let color = 'var(--google-text)';
-          if (pct < 20) {
-            barBg = 'linear-gradient(90deg, #dc2626, #ef4444)';
-            color = 'var(--danger-text)';
-          } else if (pct < 50) {
-            barBg = 'linear-gradient(90deg, #d97706, #f59e0b)';
-            color = 'var(--warning-text)';
-          }
-
-          const resetText = m.resetTime ? formatDateTime(m.resetTime) : '—';
-          const name = escapeHtml(m.displayName || m.model);
-          const modelId = escapeHtml(m.model);
-          const src = escapeHtml(m.sourceAccount || '');
-
-          return '<div style="background: var(--bg-panel); border: 1px solid var(--border-hairline); border-radius: 6px; padding: 8px 10px;">' +
-            '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">' +
-              '<span style="font-weight: 500; font-size: 12px; color: var(--text-pure); display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' +
-                '<span style="color: var(--google-text); font-size: 10px;">●</span>' +
-                '<span>' + name + '</span>' +
-                '<span style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); background: var(--bg-chassis); padding: 1px 4px; border-radius: 4px;">' + modelId + '</span>' +
-              '</span>' +
-              '<strong class="tabular-nums" style="font-size: 12px; color: ' + color + '; white-space: nowrap; margin-left: 8px;">剩余 ' + pct.toFixed(1) + '%</strong>' +
-            '</div>' +
-            '<div class="quota-track" style="margin: 4px 0 3px;">' +
-              '<div class="quota-fill quota-fill-google" style="width: ' + Math.min(100, Math.max(0, pct)) + '%; background: ' + barBg + ';"></div>' +
-            '</div>' +
-            '<div style="font-size: 10px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">' +
-              '<span>重置时间: ' + resetText + '</span>' +
-              (src ? '<span style="color: var(--text-sub);">账号: ' + src + '</span>' : '') +
-            '</div>' +
+      if (!quotaRes.ok) throw new Error('配额查询 HTTP ' + quotaRes.status);
+      const quotaData = await quotaRes.json();
+      const accounts = quotaData.accounts || [];
+      if (summaryTag) summaryTag.textContent = '按账号展示算力池窗口';
+      if (quotaList) {
+        quotaList.innerHTML = accounts.length ? accounts.map(account => {
+          const plan = account.subscription?.tierName;
+          const body = account.status === 'ok'
+            ? renderGoogleQuotaPools(account, true)
+            : '<div style="color: var(--danger-text); font-size: 12px;">配额查询失败：' + escapeHtml(account.error || '未知错误') + '</div>';
+          return '<div style="border: 1px solid var(--border-hairline); border-radius: 8px; padding: 10px 12px;">' +
+            '<div style="font-size: 12px; font-weight: 600; overflow-wrap: anywhere;">' + escapeHtml(account.email || account.id) + '</div>' +
+            (plan ? '<div style="font-size: 10px; color: var(--google-text);">' + escapeHtml(plan) + '</div>' : '') +
+            body + '<a href="/google-accounts" style="font-size: 11px;">查看此账号算力池窗口 →</a>' +
           '</div>';
-        };
-
-        const primaryCount = 4;
-        const mainModels = modelList.slice(0, primaryCount);
-        const extraModels = modelList.slice(primaryCount);
-
-        if (quotaList) {
-          quotaList.innerHTML = mainModels.map(renderItem).join('');
-        }
-
-        if (extraModels.length > 0 && moreWrapper && moreList) {
-          moreWrapper.style.display = 'block';
-          moreList.innerHTML = extraModels.map(renderItem).join('');
-          const btn = document.getElementById('btn-home-google-more');
-          if (btn && !homeGoogleMoreOpen) {
-            btn.textContent = '展开其余 ' + extraModels.length + ' 个模型配额 ▼';
-          }
-        } else if (moreWrapper) {
-          moreWrapper.style.display = 'none';
-        }
-      } else {
-        if (summaryTag) summaryTag.textContent = '配额同步受阻';
-        if (quotaList) {
-          quotaList.innerHTML = '<div style="font-size: 12px; color: var(--warning-text); text-align: center; padding: 12px;">无法连接 Google PA 配额接口</div>';
-        }
+        }).join('') : '<div style="font-size: 12px; color: var(--text-muted);">没有可查询的账号</div>';
       }
     } catch (err) {
       if (countEl) countEl.textContent = '读取失败';
       if (detailEl) detailEl.textContent = '状态读取异常：' + err.message;
       if (summaryTag) summaryTag.textContent = '读取失败';
+      if (quotaList) quotaList.innerHTML = '<div style="color: var(--warning-text); font-size: 12px;">配额读取失败：' + escapeHtml(err.message) + '</div>';
     }
   }
 
@@ -283,14 +178,14 @@ export const gatewayScript = `
           planTag.textContent = 'ChatGPT ' + (usage.planType ? usage.planType.toUpperCase() : '订阅');
         }
 
-        const windowLabel = (w: any) => {
+        const windowLabel = (w) => {
           const seconds = Number(w.windowSeconds);
           if (seconds >= 172800) return '周周期订阅配额 (Weekly Window)';
           if (seconds > 0 && seconds <= 172800) return Math.max(1, Math.round(seconds / 3600)) + ' 小时会话窗口 (Session Window)';
           return w.id === 'primary' ? '主配额窗口' : '次配额窗口';
         };
 
-        const renderWindow = (w: any) => {
+        const renderWindow = (w) => {
           const pct = Math.round(w.remainingPercent || 0);
           let barBg = 'linear-gradient(90deg, #0284c7, #38bdf8)';
           let color = 'var(--codex-text)';

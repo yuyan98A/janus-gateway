@@ -138,7 +138,7 @@ export async function handleGoogleQuota(
 
   try {
     const report = await googleClient.fetchQuota(targetAccountId);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(report));
   } catch (err: any) {
     res.writeHead(500, { 'Content-Type': 'application/json' });

@@ -3,6 +3,20 @@ import { GoogleAccountOnboarding } from './onboarding.ts';
 import { GoogleProviderClient } from '../client.ts';
 import { loadConfig } from '../../../config.ts';
 
+function formatRemainingTime(resetTime?: string, offsetMs = 0): string {
+  if (!resetTime) return 'Reset time unknown';
+  const diffMs = Date.parse(resetTime) - (Date.now() + offsetMs);
+  if (diffMs <= 0) return 'Reset due; refresh quota';
+  const totalMins = Math.ceil(diffMs / 60000);
+  return `Resets in ${Math.floor(totalMins / 60)}h ${totalMins % 60}m`;
+}
+
+function formatProgressBar(fraction: number, width = 20): string {
+  const clamped = Math.max(0, Math.min(1, fraction));
+  const filled = Math.round(clamped * width);
+  return '[' + '█'.repeat(filled) + '░'.repeat(width - filled) + ']';
+}
+
 async function runCli() {
   const config = loadConfig();
   const pool = new GoogleAccountPool({
@@ -112,61 +126,48 @@ async function runCli() {
     case 'quota': {
       const target = args[1];
       console.log('\n' + '='.repeat(80));
-      console.log(`📊 Querying Google Antigravity Quota...`);
+      console.log(`📊 Google Antigravity 各账号算力池额度窗口`);
       console.log('='.repeat(80));
 
       const client = new GoogleProviderClient(pool);
       try {
         const report = await client.fetchQuota(target);
         if (report.accounts.length === 0) {
-          console.log('No eligible accounts available for quota query.');
+          console.log('\n未找到可用于查询配额的有效 Google 账号。\n');
           break;
         }
 
         report.accounts.forEach((acc, i) => {
-          console.log(`\n[${i + 1}] ${acc.email} (${acc.label || acc.id}) - Project: ${acc.projectId || 'N/A'}`);
+          const planTag = acc.subscription?.tierName
+            ? ` [${acc.subscription.tierName}]`
+            : (acc.subscription?.plan ? ` [${acc.subscription.plan.toUpperCase()}]` : '');
+          console.log(`\n[${i + 1}] ${acc.email}${planTag} (${acc.label || acc.id}) - Project: ${acc.projectId || 'N/A'}`);
           if (acc.status === 'error') {
-            console.log(`    ❌ Status: Error - ${acc.error}`);
+            console.log(`    ❌ 状态: 查询异常 - ${acc.error}`);
             return;
           }
 
-          console.log(`    ✅ Status: OK (Checked: ${acc.checkedAt})`);
-          const models = Object.values(acc.models);
-          if (models.length === 0) {
-            console.log(`    ℹ️ No model quota info returned.`);
-            return;
-          }
+          const offsetStr = acc.serverTimeOffsetMs !== undefined ? ` (时钟差: ${acc.serverTimeOffsetMs > 0 ? '+' : ''}${Math.round(acc.serverTimeOffsetMs / 1000)}s)` : '';
+          console.log(`    ✅ 状态: 正常 (同步于 ${acc.checkedAt}${offsetStr})`);
+          if (!acc.groups?.length) console.log('    ℹ️ 上游未提供有效算力池窗口，配额未知');
 
-          console.log(`    📋 Model Quotas:`);
-          const priority = ['claude-sonnet-4-6', 'claude-opus-4-6-thinking', 'gemini-3.8-flash', 'gemini-2.5-pro', 'gemini-2.5-flash'];
-          const sorted = [...models].sort((a, b) => {
-            const pa = priority.indexOf(a.model);
-            const pb = priority.indexOf(b.model);
-            if (pa !== -1 && pb !== -1) return pa - pb;
-            if (pa !== -1) return -1;
-            if (pb !== -1) return 1;
-            return a.model.localeCompare(b.model);
-          });
-
-          sorted.slice(0, 10).forEach(m => {
-            const filled = Math.round(m.remainingPercent / 10);
-            const bar = '█'.repeat(Math.max(0, Math.min(10, filled))) + '░'.repeat(Math.max(0, 10 - filled));
-            const resetInfo = m.resetTime ? ` (Reset: ${m.resetTime})` : '';
-            console.log(`      • ${m.model.padEnd(28)} [${bar}] ${m.remainingPercent.toFixed(1).padStart(5)}%${resetInfo}`);
-          });
-          if (sorted.length > 10) {
-            console.log(`      ... and ${sorted.length - 10} more models`);
+          for (const group of acc.groups || []) {
+            console.log(`    ▶ ${group.displayName}`);
+            for (const bucket of group.buckets) {
+              const percent = bucket.remainingPercent;
+              const bar = bucket.remainingFraction === null ? '[Unknown quota]' : formatProgressBar(bucket.remainingFraction, 20);
+              const percentStr = percent === null ? 'unknown' : percent.toFixed(2).padStart(6) + '%';
+              const reset = formatRemainingTime(bucket.resetTime, acc.serverTimeOffsetMs);
+              const blocked = bucket.available === false && (bucket.remainingFraction ?? 0) > 0 ? ' · 周额度已耗尽' : '';
+              const label = bucket.window === 'weekly' ? '周额度' : bucket.window === '5h' ? '5 小时额度' : bucket.displayName;
+              console.log(`      • ${label.padEnd(20)} ${bar} ${percentStr}  ${reset}${blocked}`);
+            }
           }
         });
 
-        if (report.summary.primaryModelQuota) {
-          const pm = report.summary.primaryModelQuota;
-          console.log('\n' + '-'.repeat(80));
-          console.log(`💡 Primary Model Quota (${pm.model}): ${pm.remainingPercent.toFixed(1)}% remaining via ${pm.sourceAccount}`);
-        }
         console.log('\n' + '='.repeat(80) + '\n');
       } catch (err: any) {
-        console.error(`❌ Failed to query quota: ${err.message}`);
+        console.error(`❌ 查询专线配额失败: ${err.message}`);
         process.exit(1);
       }
       break;

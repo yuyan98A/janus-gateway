@@ -517,8 +517,13 @@ async function runTests() {
     });
     if (!resp.ok) throw new Error(`Status ${resp.status}`);
     const data = await resp.json();
-    if (data.object !== 'google_quota_report' || !Array.isArray(data.accounts) || typeof data.summary !== 'object') {
+    if (data.object !== 'google_quota_report' || !Array.isArray(data.accounts) || 'summary' in data) {
       throw new Error(`Unexpected quota report format: ${JSON.stringify(data)}`);
+    }
+    for (const account of data.accounts) {
+      if (account.status !== 'ok' || account.source !== 'retrieveUserQuotaSummary' || !account.groups?.some(group => group.buckets?.length)) {
+        throw new Error('Google account did not return subscription pool windows');
+      }
     }
   });
 
