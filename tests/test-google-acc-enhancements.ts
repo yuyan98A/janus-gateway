@@ -298,6 +298,84 @@ assert.strictEqual(finalChunk.usage.prompt_tokens_details.cached_tokens, 800);
 
 console.log('  PASSED: Anthropic & OpenAI egress token usage serialization verified.');
 
+// 9. Google Search Grounding Request Builder & SSE Parser
+console.log('• Testing [Google Search Grounding: web_search conversion and GroundingMetadata sources]...');
+
+// 9.1 Test web_search_20250305 conversion to googleSearch
+const webSearchPayload = buildGoogleCloudCodePayload(
+  {
+    model: 'gemini-3.8-flash-tiered',
+    tools: [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 8
+      }
+    ],
+    messages: [
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'Perform a web search for the query: nodejs latest' }]
+      }
+    ]
+  },
+  'project-grounding-123'
+);
+assert.deepStrictEqual(webSearchPayload.request.tools, [{ googleSearch: {} }]);
+assert.strictEqual(webSearchPayload.request.toolConfig, undefined, 'No functionCallingConfig should be set for googleSearch');
+console.log('  PASSED: web_search_20250305 converted to googleSearch tool.');
+
+// 9.2 Test regular multi-tool requests still use functionDeclarations
+const multiToolPayload = buildGoogleCloudCodePayload(
+  {
+    model: 'claude-sonnet-4-6',
+    tools: [
+      { name: 'Bash', input_schema: { type: 'object', properties: { command: { type: 'string' } } } },
+      { name: 'Read', input_schema: { type: 'object', properties: { file_path: { type: 'string' } } } }
+    ],
+    messages: [{ role: 'user', content: 'List files' }]
+  },
+  'project-grounding-123'
+);
+assert.ok(multiToolPayload.request.tools[0].functionDeclarations, 'Multi-tool must retain functionDeclarations');
+assert.strictEqual(multiToolPayload.request.tools[0].functionDeclarations.length, 2);
+console.log('  PASSED: Regular multi-tool request retains functionDeclarations.');
+
+// 9.3 Test parseGoogleStreamToUnified appends markdown sources from groundingMetadata
+const groundingChunksRaw = [
+  'data: {"response":{"candidates":[{"content":{"parts":[{"text":"Node.js v24 is the latest."}]},"groundingMetadata":{"groundingChunks":[{"web":{"uri":"https://nodejs.org/","title":"Node.js Official"}},{"web":{"uri":"https://github.com/nodejs/node","title":"Node.js GitHub"}}]}}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":30}}}\n\n',
+  'data: [DONE]\n\n'
+];
+
+async function* createMockGroundingStream() {
+  const encoder = new TextEncoder();
+  for (const c of groundingChunksRaw) {
+    yield encoder.encode(c);
+  }
+}
+
+const mockGroundingReadable = new ReadableStream<Uint8Array>({
+  async start(controller) {
+    for await (const chunk of createMockGroundingStream()) {
+      controller.enqueue(chunk);
+    }
+    controller.close();
+  }
+});
+
+let accumulatedText = '';
+for await (const ev of parseGoogleStreamToUnified(mockGroundingReadable, 'gemini-3.8-flash-tiered')) {
+  if (ev.type === 'text_delta') {
+    accumulatedText += ev.text;
+  }
+}
+
+assert.ok(accumulatedText.includes('Node.js v24 is the latest.'));
+assert.ok(accumulatedText.includes('**Sources:**'));
+assert.ok(accumulatedText.includes('[Node.js Official](https://nodejs.org/)'));
+assert.ok(accumulatedText.includes('[Node.js GitHub](https://github.com/nodejs/node)'));
+console.log('  PASSED: Grounding sources formatted as Markdown links and appended.');
+
 console.log('======================================================================');
 console.log('🎉 All Google PA acc Enhancements Tests Passed Successfully!');
 console.log('======================================================================');

@@ -91,6 +91,18 @@ sequenceDiagram
 * **`FileRead` / `FileWrite` / `FileEdit`**：若模型传入 `path`、`filename`、`filePath`，自动映射为 `file_path`；
 * **`Bash`**：若模型传入 `cmd`、`script`，自动映射为 `command`。
 
+### 4.5 Claude Code 内置 `web_search_20250305` 与 Google Search Grounding 桥接
+* **请求识别 (`isWebSearchOnlyRequest`)**：
+  Claude Code CLI 在执行联网搜索时，会在后台向网关派发独立的 Side-Query 子请求，携带 Anthropic 私有服务端工具定义 `{ type: "web_search_20250305", name: "web_search" }`，提示词形如 `"Perform a web search for the query: ..."`。
+* **Google 原生 Grounding 转换**：
+  [`request-builder.ts`](../../src/providers/google/request-builder.ts) 智能拦截此类专用搜索请求，将其无缝转换为 Google Cloud Code PA 原生的内置检索工具：
+  ```json
+  "tools": [{ "googleSearch": {} }]
+  ```
+  同时避免下发常规函数调用的 `functionCallingConfig`，完全绕过上游对内置工具与自定义函数并存时的参数限制。
+* **搜索元数据转译与来源回填**：
+  [`sse-parser.ts`](../../src/providers/google/sse-parser.ts) 在消费 Google PA 流式响应时，实时捕获候选节点的 `groundingMetadata.groundingChunks`，去重提取所有真实的 Web 引用与重定向链接，并在回答正文尾部自动合成为符合 Markdown 规范的超链接引用块（形如 `**Sources:**\n- [Title](URL)`），精准满足 Claude Code 对搜索结果的链接格式与引用一致性校验。
+
 ---
 
 ## 5. 跨轮状态机闭环与上下文恢复
@@ -116,7 +128,7 @@ sequenceDiagram
 | :--- | :--- | :--- |
 | **Schema Sanitizer** | [`tests/test-schema-sanitizer.ts`](../../tests/test-schema-sanitizer.ts) | 1. `const` 转 `enum` 与非标字段剔除；<br/>2. `exclusiveMinimum` / `uniqueItems` 移除；<br/>3. `type` 多类型数组解包；<br/>4. `anyOf` / `oneOf` 智能扁平化；<br/>5. Claude Code 90+ 嵌套工具深度净化；<br/>6. **`pattern`、`title`、`format` 属性名 100% 完整保留断言**；<br/>7. 空对象注入合成占位断言。 |
 | **Tool Healer** | [`tests/test-tool-healer.ts`](../../tests/test-tool-healer.ts) | 1. `EnterPlanMode` 传入合成 `reason` 时强制重置为 `{}`；<br/>2. 缺失 tools 定义时基于已知空工具白名单兜底 `{}`；<br/>3. `Glob` 仅有 `path` 时自动补全 `pattern: "**/*"`；<br/>4. `Glob` 路径含通配符时自动提升为 `pattern`；<br/>5. 合法工具定义了 `reason` 时完整保留；<br/>6. `TaskList`、`CronList` 空参数自愈；<br/>7. `WebSearch`、`WebFetch`、`Grep`、`FileRead`、`Bash` 参数别名自动规范化；<br/>8. **端到端 SSE 流式 `parseGoogleStreamToUnified` 输出 `{}` 断言**。 |
-| **PA 细节吸收** | [`tests/test-google-acc-enhancements.ts`](../../tests/test-google-acc-enhancements.ts) | 1. `SignatureCache` 跨轮次存取与回填；<br/>2. `cleanCacheControl` 深度清洗；<br/>3. Assistant 内容三段式刚性排序；<br/>4. 工具循环打断自愈；<br/>5. Claude 思考模型硬约束；<br/>6. 缓存 Token 扣减与使用量校准。 |
+| **PA 细节吸收** | [`tests/test-google-acc-enhancements.ts`](../../tests/test-google-acc-enhancements.ts) | 1. `SignatureCache` 跨轮次存取与回填；<br/>2. `cleanCacheControl` 深度清洗；<br/>3. Assistant 内容三段式刚性排序；<br/>4. 工具循环打断自愈；<br/>5. Claude 思考模型硬约束；<br/>6. 缓存 Token 扣减与使用量校准；<br/>7. **`web_search_20250305` 自动转换为 `googleSearch` Grounding 工具**；<br/>8. **`groundingMetadata` 转译并追加 Markdown 超链接与 Sources**。 |
 | **全量网关回归** | `npm test` (全量 21 项) | 包含上述单元测试及本地网关端到端 HTTP/SSE、多云路由、模型发现、持久化缓存更新等全量集成验收。 |
 | **端到端实测** | 交互式验证 (Claude Code CLI v2.1.302) | 1. 执行 `/web-design-guidelines` 复杂前端重构任务，`EnterPlanMode` 与 `Glob` 调用全链路零报错顺畅执行；<br/>2. 真实触发 `WebSearch` 与 `WebFetch`，两轮工具流式交互完整闭环。 |
 

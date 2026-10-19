@@ -25,6 +25,8 @@ export async function* parseGoogleStreamToUnified(
   let hasToolCalls = false;
 
   let currentThinkingSignature = '';
+  const collectedGroundingChunks: any[] = [];
+  let emittedTextAccumulator = '';
 
   for await (const sse of parseEventSourceStream(stream)) {
     if (!sse.data) continue;
@@ -53,6 +55,15 @@ export async function* parseGoogleStreamToUnified(
 
     const candidate = innerResponse.candidates?.[0];
     if (!candidate) continue;
+
+    // Accumulate Google Search Grounding metadata if present
+    if (candidate.groundingMetadata?.groundingChunks) {
+      for (const chunk of candidate.groundingMetadata.groundingChunks) {
+        if (chunk?.web?.uri) {
+          collectedGroundingChunks.push(chunk);
+        }
+      }
+    }
 
     // 1. Emit start event on first chunk
     if (!hasEmittedStart) {
@@ -109,6 +120,7 @@ export async function* parseGoogleStreamToUnified(
           yield { type: 'text_start' };
         }
 
+        emittedTextAccumulator += part.text;
         yield {
           type: 'text_delta',
           text: part.text
@@ -149,6 +161,45 @@ export async function* parseGoogleStreamToUnified(
         };
         currentBlockType = null;
       }
+    }
+  }
+
+  // If Google Grounding metadata was returned, ensure unique sources are appended
+  // as markdown hyperlinks if not already present in the emitted text.
+  if (collectedGroundingChunks.length > 0) {
+    const uniqueSources: Array<{ uri: string; title: string }> = [];
+    const seenUris = new Set<string>();
+
+    for (const chunk of collectedGroundingChunks) {
+      const uri = chunk.web?.uri;
+      const title = (chunk.web?.title || uri || '').trim();
+      if (uri && !seenUris.has(uri) && !emittedTextAccumulator.includes(uri)) {
+        seenUris.add(uri);
+        uniqueSources.push({ uri, title });
+      }
+    }
+
+    if (uniqueSources.length > 0) {
+      let sourcesMarkdown = '\n\n**Sources:**\n';
+      for (const src of uniqueSources) {
+        sourcesMarkdown += `- [${src.title}](${src.uri})\n`;
+      }
+
+      if (currentBlockType !== 'text') {
+        if (currentBlockType === 'thinking') {
+          yield { type: 'thinking_stop', signature: currentThinkingSignature || undefined };
+          currentThinkingSignature = '';
+        } else if (currentBlockType === 'tool_use') {
+          yield { type: 'tool_call_stop' };
+        }
+        currentBlockType = 'text';
+        yield { type: 'text_start' };
+      }
+
+      yield {
+        type: 'text_delta',
+        text: sourcesMarkdown
+      };
     }
   }
 

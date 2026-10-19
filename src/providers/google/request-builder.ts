@@ -152,6 +152,45 @@ function convertContentToParts(
   return parts;
 }
 
+/**
+ * Detects whether a request is dedicated to web search (e.g. Claude Code web_search side-query,
+ * or requests containing only web search tools).
+ */
+export function isWebSearchOnlyRequest(request: AnthropicRequest | GatewayRequestIR): boolean {
+  const tools = request.tools || [];
+
+  // 1. Anthropic server-side web search tool: type: 'web_search_20250305'
+  const hasServerWebSearch = tools.some(
+    (t: any) => t.type === 'web_search_20250305' || t.name === 'web_search_20250305'
+  );
+  if (hasServerWebSearch) return true;
+
+  // 2. All tools provided are web search tools
+  if (tools.length > 0) {
+    const allWebSearch = tools.every((t: any) => {
+      const name = (t.name || t.type || '').toLowerCase();
+      return name === 'web_search' || name === 'websearch' || name === 'google_search' || name === 'googlesearch';
+    });
+    if (allWebSearch) return true;
+  }
+
+  // 3. Claude Code side-query pattern: "Perform a web search for the query:"
+  const messages = request.messages || [];
+  const lastMsg = messages[messages.length - 1];
+  if (lastMsg) {
+    const text = typeof lastMsg.content === 'string'
+      ? lastMsg.content
+      : Array.isArray(lastMsg.content)
+        ? lastMsg.content.map((c: any) => c.text || '').join(' ')
+        : '';
+    if (/^Perform a web search for the query:/i.test(text.trim())) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function buildGoogleCloudCodePayload(
   request: AnthropicRequest | GatewayRequestIR,
   projectId: string,
@@ -272,10 +311,16 @@ export function buildGoogleCloudCodePayload(
     generationConfig
   };
 
-  // Convert tools if provided
-  if (request.tools && request.tools.length > 0) {
+  // Convert tools if provided or if request is a dedicated web search query
+  if (isWebSearchOnlyRequest(request)) {
+    googleRequest.tools = [
+      {
+        googleSearch: {}
+      }
+    ];
+  } else if (request.tools && request.tools.length > 0) {
     const functionDeclarations = request.tools.map((tool: any) => ({
-      name: tool.name,
+      name: tool.name || tool.type,
       description: scrubText(tool.description || ''),
       parameters: sanitizeGoogleSchema(tool.input_schema || tool.parameters || { type: 'object', properties: {} })
     }));
